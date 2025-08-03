@@ -24,10 +24,14 @@ ENABLE_USGS_ELEVATION = True   # USGS 3DEP elevation data
 ENABLE_MODIS = True           # MODIS satellite data (via ORNL service)
 
 # Weather Data Configuration (OpenWeatherMap)
-# Set OPENWEATHER_API_KEY environment variable to enable real-time weather data
-# Example: export OPENWEATHER_API_KEY="your_api_key_here"
+# Loads from .env file or environment variables
 import os
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")  # Load from environment variable
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")  # Load from .env file or environment variable
 OPENWEATHER_ENV = os.getenv("OPENWEATHER_ENV", "dev")   # Default to "dev" if not set
 
 # Logging Configuration
