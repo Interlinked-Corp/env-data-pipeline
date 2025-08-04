@@ -8,7 +8,39 @@ Coordinates between LANDFIRE and MODIS interpretation modules.
 from typing import Dict, Any
 from .landfire_interpretation import extract_landfire_metadata
 from .modis_interpretation import build_modis_scaling_table, apply_modis_scaling
+import boto3
+from config import aws_access_key_id, aws_secret_access_key, aws_region
+from botocore.exceptions import ClientError
 
+def connect_to_aws_s3() -> boto3.client:
+    """
+    Connect to AWS S3 using environment variables for credentials.
+
+        
+    Returns:
+        boto3 S3 client
+    """
+
+    if not aws_access_key_id or not aws_secret_access_key:
+        print("Error: AWS credentials not found in .env file")
+        return None
+    
+    try:
+        # Create S3 client
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=aws_region
+        )
+        return s3_client
+    except ClientError as e:
+        print(f"Error creating S3 client: {e}")
+        return None
+
+
+    s3_client = boto3.client('s3')
+    return s3_client
 
 def extract_all_metadata(pipeline_data: Dict[str, Any]) -> Dict[str, Any]:
     """
