@@ -27,6 +27,11 @@ ENABLE_MODIS = True           # MODIS satellite data (via ORNL service)
 # Set OPENWEATHER_API_KEY environment variable to enable real-time weather data
 # Example: export OPENWEATHER_API_KEY="your_api_key_here"
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file if present (project root or parents)
+# This enables local development without exporting variables globally.
+load_dotenv()
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")  # Load from environment variable
 OPENWEATHER_ENV = os.getenv("OPENWEATHER_ENV", "dev")   # Default to "dev" if not set
 

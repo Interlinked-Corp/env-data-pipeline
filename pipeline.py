@@ -19,6 +19,7 @@ from services import (
     USGSElevationService,
     OpenWeatherMapService
 )
+from metadata import LANDFIREMetadataExtractor
 
 # Configuration import with fallback handling
 try:
@@ -203,6 +204,23 @@ class EnvironmentalDataPipeline:
                 if landfire_results['data'] and not landfire_results['errors']:
                     results['summary']['successful_sources'] += 1
                 
+                # Integrate coordinate-specific interpretation for each LANDFIRE product
+                try:
+                    extractor = LANDFIREMetadataExtractor()
+                    for product_name, product_data in landfire_results.get('data', {}).items():
+                        if isinstance(product_data, dict) and 'data' in product_data:
+                            interp = extractor.interpret_pixel_at_coordinate(
+                                geotiff_bytes=product_data['data'],
+                                latitude=latitude,
+                                longitude=longitude,
+                                product_type=product_name,
+                            )
+                            # Attach interpretation under each product
+                            results['landfire']['data'][product_name]['coordinate_pixel'] = interp.get('coordinate_pixel', interp)
+                except Exception as e:
+                    # Non-fatal: keep base data even if interpretation fails
+                    logger.warning(f"LANDFIRE pixel interpretation failed: {e}")
+
                 results['summary']['total_errors'] += len(landfire_results['errors'])
                 
             except Exception as e:
