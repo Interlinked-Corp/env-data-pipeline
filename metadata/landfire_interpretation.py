@@ -16,12 +16,17 @@ import json
 import csv
 import requests
 import rasterio
+from rasterio.warp import transform as rio_transform
 import numpy as np
 import boto3
 from io import BytesIO, StringIO
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import logging
+
+# Note: Avoid importing metadata_integration at module import time to prevent
+# circular imports when consumers import LANDFIREMetadataExtractor. Import
+# inside main() only where needed.
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +297,56 @@ class LANDFIREMetadataExtractor:
             coverage[label] = round(percentage, 2)
         
         return coverage
+
+    def interpret_pixel_at_coordinate(self, geotiff_bytes: bytes, latitude: float, longitude: float,
+                                      product_type: str) -> Dict[str, Any]:
+        """
+        Convert lat/lon to pixel coordinates for a GeoTIFF and interpret the pixel value.
+
+        Returns a dictionary with 'coordinate_pixel' containing lat, lon, row, col,
+        pixel_value, interpreted label, and dataset CRS.
+        """
+        try:
+            with rasterio.open(BytesIO(geotiff_bytes)) as ds:
+                if ds.crs is None:
+                    raise ValueError("Dataset has no CRS; cannot map coordinates to pixels.")
+
+                x, y = rio_transform("EPSG:4326", ds.crs, [longitude], [latitude])
+                x, y = x[0], y[0]
+
+                row, col = ds.index(x, y)
+                if row < 0 or row >= ds.height or col < 0 or col >= ds.width:
+                    raise ValueError("Coordinate outside raster bounds.")
+
+                band1 = ds.read(1)
+                pixel_value = int(band1[row, col])
+                if ds.nodata is not None and pixel_value == ds.nodata:
+                    interpreted = "NoData"
+                else:
+                    # Ensure attribute cache is loaded
+                    if product_type not in self._attribute_cache:
+                        value_map = self._load_attribute_table_from_s3(product_type)
+                        if value_map:
+                            self._attribute_cache[product_type] = value_map
+                        else:
+                            self._attribute_cache[product_type] = self._fallback_values.get(product_type, {})
+                    value_map = self._attribute_cache.get(product_type, {})
+                    interpreted = value_map.get(int(pixel_value), f"Unknown ({pixel_value})")
+
+                return {
+                    "coordinate_pixel": {
+                        "lat": latitude,
+                        "lon": longitude,
+                        "row": row,
+                        "col": col,
+                        "pixel_value": pixel_value,
+                        "interpreted": interpreted,
+                        "crs": str(ds.crs)
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Error interpreting pixel at coordinate: {e}")
+            return {"error": str(e)}
 
 
 class MODISMetadataExtractor:
@@ -1012,6 +1067,7 @@ def main():
     
     # Example usage with pipeline data
     from pipeline import GeospatialDataPipeline
+    from metadata.metadata_integration import extract_all_metadata
     
     # Get sample data
     pipeline = GeospatialDataPipeline(landfire_year='latest')

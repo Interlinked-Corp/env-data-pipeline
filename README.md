@@ -14,19 +14,29 @@ Environmental data pipeline for retrieving geospatial data by latitude and longi
    source venv/bin/activate
    ```
 
-2. **Set up environment variables:**
+2. **Install dependencies:**
    ```bash
-   cp .env.example .env
-   # Edit .env file with your OpenWeatherMap API key
-   export OPENWEATHER_API_KEY="your_api_key_here"
+   python3 -m pip install -r requirements.txt
    ```
 
-3. **Run the pipeline:**
+3. **Set up environment variables (.env supported):**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your keys (python-dotenv will load these automatically)
+   # Required for S3 interpretation lookups (LANDFIRE attribute CSVs)
+   AWS_ACCESS_KEY_ID=your_key
+   AWS_SECRET_ACCESS_KEY=your_secret
+   AWS_REGION=us-east-2
+   # Optional: weather
+   OPENWEATHER_API_KEY=your_api_key_here
+   ```
+
+4. **Run the pipeline:**
    ```bash
    python pipeline.py
    ```
 
-4. **Test the pipeline:**
+5. **Test the pipeline:**
    ```bash
    python test_pipeline.py
    ```
@@ -193,11 +203,27 @@ data = pipeline.get_location_data(latitude, longitude, buffer_meters)
 - `OpenWeatherMapService` - Real-time weather data access
 - Current conditions, 5-day forecasts, and fire weather risk assessment
 
-**Output format**: Python dictionary structure with nested data organized by source:
+**Output format**: Python dictionary with nested data organized by source. LANDFIRE entries now include a coordinate-specific interpretation (`coordinate_pixel`) for the request location:
 ```json
 {
   "request": {"latitude": 34.0522, "longitude": -118.2437, "buffer_meters": 1000},
-  "landfire": {"data": {"vegetation_type": {"data": "binary_geotiff", "size_bytes": 131476}}},
+  "landfire": {
+    "data": {
+      "vegetation_type": {
+        "data": "binary_geotiff",
+        "size_bytes": 131476,
+        "coordinate_pixel": {
+          "lat": 34.0522,
+          "lon": -118.2437,
+          "row": 127,
+          "col": 128,
+          "pixel_value": 7299,
+          "interpreted": "Developed-Medium Intensity",
+          "crs": "EPSG:4326"
+        }
+      }
+    }
+  },
   "elevation": {"data": {"data": "binary_geotiff", "size_bytes": 262982}},
   "summary": {"total_sources": 2, "successful_sources": 2, "total_errors": 0}
 }
@@ -266,6 +292,12 @@ with rasterio.open(BytesIO(geotiff_bytes)) as dataset:
 - **Fuel Model**: Integer codes (91-204, see Scott & Burgan classification)
 - **Canopy Cover**: Percentage values (0-100)
 - **Elevation**: Meters above sea level (float values)
+
+#### LANDFIRE pixel interpretation and S3 attribute tables
+- **What**: Each LANDFIRE product’s categorical codes are converted to human-readable labels using official attribute tables.
+- **How**: `metadata/LANDFIREMetadataExtractor` loads CSV lookup tables from S3 and caches them per process.
+- **Credentials**: Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` (default `us-east-2`) in `.env`.
+- **Fallback**: If S3 credentials are not available, a small built-in mapping covers common codes (e.g., urban/developed classes). The output still includes `coordinate_pixel` with an `interpreted` label when possible.
 
 ### Time Series Data Structure (MODIS)
 

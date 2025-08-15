@@ -28,11 +28,17 @@ ENABLE_MODIS = True           # MODIS satellite data (via ORNL service)
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables from a .env file if present (project root or parents)
+# This enables local development without exporting variables globally.
 load_dotenv()
-
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")  # Load from .env file or environment variable
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")  # Load from environment variable
 OPENWEATHER_ENV = os.getenv("OPENWEATHER_ENV", "dev")   # Default to "dev" if not set
+
+# Get AWS credentials from environment variables
+aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+aws_region = os.getenv('AWS_REGION', 'us-east-1')  # Default to us-east-1 if not specified
+    
 
 # Logging Configuration
 LOG_LEVEL = "INFO"            # DEBUG, INFO, WARNING, ERROR
