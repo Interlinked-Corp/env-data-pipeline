@@ -8,15 +8,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt .
+COPY ./containers/modis/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY modis_container.py .
-COPY shared_schema.py .
+COPY ./containers/modis/modis_container.py .
+COPY ./shared_schema.py .
 
-# Copy services from main pipeline
-COPY services/modis_service.py ./services/
+# Create directories and copy services from main pipeline
+RUN mkdir -p ./services
+COPY ./services/modis_service.py ./services/
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

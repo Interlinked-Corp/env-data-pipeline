@@ -14,15 +14,16 @@ ENV GDAL_DATA=/usr/share/gdal
 ENV PROJ_LIB=/usr/share/proj
 
 # Copy requirements
-COPY requirements.txt .
+COPY ./containers/elevation/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY elevation_container.py .
-COPY shared_schema.py .
+COPY ./containers/elevation/elevation_container.py .
+COPY ./shared_schema.py .
 
-# Copy services from main pipeline
-COPY services/usgs_service.py ./services/
+# Create directories and copy services from main pipeline
+RUN mkdir -p ./services
+COPY ./services/usgs_service.py ./services/
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -22,8 +22,8 @@ services:
 
   modis-container:
     build:
-      context: ./containers/modis
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./containers/modis/Dockerfile
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -36,8 +36,8 @@ services:
 
   weather-container:
     build:
-      context: ./containers/weather
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./containers/weather/Dockerfile
     environment:
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - OPENWEATHER_ENV=${OPENWEATHER_ENV}
@@ -53,8 +53,8 @@ services:
 
   elevation-container:
     build:
-      context: ./containers/elevation
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./containers/elevation/Dockerfile
     volumes:
       - ./shared_schema.py:/app/shared_schema.py:ro
     healthcheck:
@@ -102,8 +102,8 @@ services:
   # Orchestration and API services
   container-orchestrator:
     build:
-      context: ./containers/orchestrator
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./containers/orchestrator/Dockerfile
     ports:
       - "8000:8000"
     environment:
