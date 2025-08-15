@@ -1,0 +1,164 @@
+# Docker Compose for Environmental Data Pipeline
+
+services:
+  # Core environmental data containers
+  landfire-container:
+    build: 
+      context: .
+      dockerfile: ./containers/landfire/Dockerfile
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=us-west-2
+    volumes:
+      - ./shared_schema.py:/app/shared_schema.py:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pipeline-network
+
+  modis-container:
+    build:
+      context: ./containers/modis
+      dockerfile: Dockerfile
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./shared_schema.py:/app/shared_schema.py:ro
+    networks:
+      - pipeline-network
+
+  weather-container:
+    build:
+      context: ./containers/weather
+      dockerfile: Dockerfile
+    environment:
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - OPENWEATHER_ENV=${OPENWEATHER_ENV}
+    volumes:
+      - ./shared_schema.py:/app/shared_schema.py:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pipeline-network
+
+  elevation-container:
+    build:
+      context: ./containers/elevation
+      dockerfile: Dockerfile
+    volumes:
+      - ./shared_schema.py:/app/shared_schema.py:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pipeline-network
+
+  # Infrastructure services
+  redis-cache:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  message-queue:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=pipeline
+      - RABBITMQ_DEFAULT_PASS=pipeline123
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Orchestration and API services
+  container-orchestrator:
+    build:
+      context: ./containers/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis-cache:6379
+      - RABBITMQ_URL=amqp://pipeline:pipeline123@message-queue:5672
+    depends_on:
+      - redis-cache
+      - message-queue
+      - landfire-container
+      - modis-container
+      - weather-container
+      - elevation-container
+    volumes:
+      - ./shared_schema.py:/app/shared_schema.py:ro
+    networks:
+      - pipeline-network
+
+  # api-gateway:
+  #   build:
+  #     context: ./containers/api-gateway
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - ORCHESTRATOR_URL=http://container-orchestrator:8000
+  #     - REDIS_URL=redis://redis-cache:6379
+  #   depends_on:
+  #     - container-orchestrator
+  #   networks:
+  #     - pipeline-network
+
+  # Monitoring and logging (development)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - pipeline-network
+
+networks:
+  pipeline-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+  prometheus-data:
+
+# Development environment variables
+# Copy .env.example to .env and customize for your environment
