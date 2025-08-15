@@ -67,7 +67,7 @@ async def get_modis_data(request: MODISRequest):
     
     try:
         # Get MODIS data using existing service
-        modis_data = modis_service.get_modis_data(
+        modis_data = modis_service.get_data(
             request.latitude, 
             request.longitude, 
             request.search_period_days

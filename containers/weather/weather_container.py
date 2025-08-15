@@ -25,7 +25,7 @@ from shared_schema import (
 
 # Import the existing weather service
 try:
-    from services.openweathermap_service import OpenWeatherMapService
+    from services.weather_service import OpenWeatherMapService
 except ImportError:
     # Fallback if service structure changes
     print("Warning: Could not import OpenWeatherMapService")
@@ -65,7 +65,7 @@ async def get_weather_data(request: WeatherRequest):
     
     try:
         # Get weather data using existing service
-        weather_data = weather_service.get_weather_data(request.latitude, request.longitude)
+        weather_data = weather_service.get_data(request.latitude, request.longitude)
         
         processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
         

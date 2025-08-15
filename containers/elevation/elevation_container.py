@@ -7,8 +7,9 @@ Handles DEM data with terrain analysis and slope/aspect calculations.
 
 import os
 import sys
+import base64
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
@@ -25,7 +26,7 @@ from shared_schema import (
 
 # Import existing services
 try:
-    from services.usgs_elevation_service import USGSElevationService
+    from services.usgs_service import USGSElevationService
     import rasterio
     from rasterio.io import MemoryFile
 except ImportError as e:
@@ -38,6 +39,20 @@ app = FastAPI(title="Elevation Container Service", version="1.0.0")
 
 # Initialize USGS service
 usgs_service = USGSElevationService() if USGSElevationService else None
+
+def sanitize_binary_data(data: Any) -> Any:
+    """
+    Recursively sanitize data to handle binary content that can't be JSON serialized
+    Converts bytes objects to base64 strings
+    """
+    if isinstance(data, bytes):
+        return base64.b64encode(data).decode('utf-8')
+    elif isinstance(data, dict):
+        return {k: sanitize_binary_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_binary_data(item) for item in data]
+    else:
+        return data
 
 class ElevationRequest(BaseModel):
     """Request model for elevation data"""
@@ -136,7 +151,7 @@ async def get_elevation_data(request: ElevationRequest):
     
     try:
         # Get elevation data using existing service
-        elevation_data = usgs_service.get_elevation_data(
+        elevation_data = usgs_service.get_data(
             request.latitude, 
             request.longitude, 
             request.buffer_meters
@@ -206,7 +221,7 @@ async def get_elevation_data(request: ElevationRequest):
             timestamp=datetime.now().isoformat(),
             metadata=metadata,
             event_id=request.event_id,
-            raw_data=elevation_data,
+            raw_data=sanitize_binary_data(elevation_data),
             interpreted_data=interpreted_data,
             errors=elevation_data.get("errors", [])
         )

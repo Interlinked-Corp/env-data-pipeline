@@ -33,11 +33,12 @@ class OpenWeatherMapService:
             api_key: OpenWeatherMap API key (required - pass directly or via config)
             environment: Environment identifier for logging purposes
         """
-        # Import here to avoid circular imports
-        from config import OPENWEATHER_API_KEY
+        # Get API key from environment or parameter
+        import os
+        env_api_key = os.getenv('OPENWEATHER_API_KEY')
         
         self.environment = environment
-        self.api_key = api_key or OPENWEATHER_API_KEY
+        self.api_key = api_key or env_api_key
         
         if not self.api_key:
             raise ValueError(f"OpenWeatherMap API key required. Set OPENWEATHER_API_KEY environment variable or pass api_key parameter.")

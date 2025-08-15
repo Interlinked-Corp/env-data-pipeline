@@ -131,7 +131,27 @@ async def collect_environmental_data(request: DataRequest):
         "errors": errors
     }
     
-    return response.to_dict()
+    # Convert response to dict manually since container results are already dicts
+    result = {
+        "request_id": response.request_id,
+        "event_id": response.event_id,
+        "location": response.location.__dict__,
+        "timestamp": response.timestamp,
+        "summary": response.summary,
+        "total_processing_time_ms": response.total_processing_time_ms
+    }
+    
+    # Add container outputs (they're already dicts)
+    if container_results.get("landfire"):
+        result["landfire"] = container_results["landfire"]
+    if container_results.get("modis"):
+        result["modis"] = container_results["modis"]
+    if container_results.get("weather"):
+        result["weather"] = container_results["weather"]
+    if container_results.get("elevation"):
+        result["elevation"] = container_results["elevation"]
+    
+    return result
 
 async def fetch_container_data(session: aiohttp.ClientSession, source: str, endpoint: str, request: DataRequest):
     """Fetch data from a specific container service"""

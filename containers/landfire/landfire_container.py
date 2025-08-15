@@ -7,8 +7,9 @@ Handles vegetation, fuel, canopy, and topographic data with interpretation.
 
 import os
 import sys
+import base64
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
@@ -37,6 +38,20 @@ app = FastAPI(title="LANDFIRE Container Service", version="1.0.0")
 # Initialize LANDFIRE services
 landfire_service = LANDFIREDataService() if LANDFIREDataService else None
 metadata_extractor = LANDFIREMetadataExtractor() if LANDFIREMetadataExtractor else None
+
+def sanitize_binary_data(data: Any) -> Any:
+    """
+    Recursively sanitize data to handle binary content that can't be JSON serialized
+    Converts bytes objects to base64 strings
+    """
+    if isinstance(data, bytes):
+        return base64.b64encode(data).decode('utf-8')
+    elif isinstance(data, dict):
+        return {k: sanitize_binary_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_binary_data(item) for item in data]
+    else:
+        return data
 
 class LANDFIRERequest(BaseModel):
     """Request model for LANDFIRE data"""
@@ -194,7 +209,7 @@ async def get_landfire_data(request: LANDFIRERequest):
             timestamp=datetime.now().isoformat(),
             metadata=metadata,
             event_id=request.event_id,
-            raw_data=landfire_data,
+            raw_data=sanitize_binary_data(landfire_data),
             interpreted_data=interpreted_data,
             errors=landfire_data.get("errors", [])
         )
