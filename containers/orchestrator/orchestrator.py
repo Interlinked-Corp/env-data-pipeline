@@ -24,7 +24,7 @@ CONTAINER_ENDPOINTS = {
     "landfire": "http://landfire-container:8001",
     "modis": "http://modis-container:8002", 
     "weather": "http://weather-container:8003",
-    "elevation": "http://elevation-container:8004"
+    "topography": "http://topography-container:8004"
 }
 
 class DataRequest(BaseModel):
@@ -118,8 +118,8 @@ async def collect_environmental_data(request: DataRequest):
         response.modis = container_results["modis"]
     if container_results.get("weather"):
         response.weather = container_results["weather"]
-    if container_results.get("elevation"):
-        response.elevation = container_results["elevation"]
+    if container_results.get("topography"):
+        response.topography = container_results["topography"]
     
     # Create summary
     successful_sources = len([r for r in container_results.values() if r is not None])
@@ -148,8 +148,8 @@ async def collect_environmental_data(request: DataRequest):
         result["modis"] = container_results["modis"]
     if container_results.get("weather"):
         result["weather"] = container_results["weather"]
-    if container_results.get("elevation"):
-        result["elevation"] = container_results["elevation"]
+    if container_results.get("topography"):
+        result["topography"] = container_results["topography"]
     
     return result
 
@@ -164,7 +164,7 @@ async def fetch_container_data(session: aiohttp.ClientSession, source: str, endp
     }
     
     # Add buffer_meters for applicable containers
-    if source in ["landfire", "elevation"]:
+    if source in ["landfire", "topography"]:
         container_request["buffer_meters"] = request.buffer_meters
     
     try:

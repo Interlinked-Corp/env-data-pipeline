@@ -101,7 +101,7 @@ class AggregatedResponse:
     landfire: Optional[ContainerOutput] = None
     modis: Optional[ContainerOutput] = None
     weather: Optional[ContainerOutput] = None
-    elevation: Optional[ContainerOutput] = None
+    topography: Optional[ContainerOutput] = None
     
     # Future format containers
     pdf_data: List[ContainerOutput] = field(default_factory=list)
@@ -131,8 +131,8 @@ class AggregatedResponse:
             result["modis"] = self.modis.to_dict()
         if self.weather:
             result["weather"] = self.weather.to_dict()
-        if self.elevation:
-            result["elevation"] = self.elevation.to_dict()
+        if self.topography:
+            result["topography"] = self.topography.to_dict()
             
         # Add multi-format data
         if self.pdf_data:
@@ -157,7 +157,7 @@ class DataTypes:
     MODIS_TEMPERATURE = "modis_temperature"
     WEATHER_CURRENT = "weather_current"
     WEATHER_FORECAST = "weather_forecast"
-    ELEVATION_DEM = "elevation_dem"
+    TOPOGRAPHY_DEM = "topography_dem"
     PDF_EXTRACT = "pdf_extract"
     EXCEL_DATA = "excel_data"
     KML_FEATURES = "kml_features"

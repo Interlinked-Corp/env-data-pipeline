@@ -9,7 +9,7 @@ services:
     environment:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_DEFAULT_REGION=us-west-2
+      - AWS_DEFAULT_REGION=us-east-2
     volumes:
       - ./shared_schema.py:/app/shared_schema.py:ro
     healthcheck:
@@ -51,10 +51,10 @@ services:
     networks:
       - pipeline-network
 
-  elevation-container:
+  topography-container:
     build:
       context: .
-      dockerfile: ./containers/elevation/Dockerfile
+      dockerfile: ./containers/topography/Dockerfile
     volumes:
       - ./shared_schema.py:/app/shared_schema.py:ro
     healthcheck:
@@ -115,7 +115,7 @@ services:
       - landfire-container
       - modis-container
       - weather-container
-      - elevation-container
+      - topography-container
     volumes:
       - ./shared_schema.py:/app/shared_schema.py:ro
     networks:

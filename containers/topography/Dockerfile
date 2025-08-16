@@ -17,11 +17,11 @@ ENV GDAL_DATA=/usr/share/gdal
 ENV PROJ_LIB=/usr/share/proj
 
 # Copy requirements
-COPY ./containers/elevation/requirements.txt .
+COPY ./containers/topography/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY ./containers/elevation/elevation_container.py .
+COPY ./containers/topography/topography_container.py .
 COPY ./shared_schema.py .
 
 # Create directories and copy services from main pipeline
@@ -34,4 +34,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the container service
 EXPOSE 8004
-CMD ["python", "elevation_container.py"]
+CMD ["python", "topography_container.py"]

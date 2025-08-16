@@ -20,7 +20,7 @@ echo "SUCCESS: Docker is available and running"
 # Set default environment variables if not already set
 export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-"test"}
 export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-"test"}
-export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-"us-west-2"}
+export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-"us-east-2"}
 export OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-""}
 
 echo "Environment configured:"

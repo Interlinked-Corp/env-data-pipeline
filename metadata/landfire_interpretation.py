@@ -63,26 +63,32 @@ class LANDFIREMetadataExtractor:
         # Cache for downloaded attribute tables
         self._attribute_cache = {}
         
-        # Fallback lookup tables for critical values
+        # Generic fallback categories based on common LANDFIRE value ranges
+        # Note: These provide general categories when S3 attribute tables unavailable
         self._fallback_values = {
             'vegetation_type': {
-                7113: 'Urban-Low Intensity',
-                7118: 'Urban-Medium Intensity', 
-                7296: 'California Coastal Scrub',
-                7297: 'Developed-Open Space',
-                7298: 'Developed-Low Intensity',
-                7299: 'Developed-Medium Intensity'
+                # Urban/Developed codes (7000-7999 range)
+                range(7000, 8000): 'Urban/Developed',
+                # Forest codes (3000-3999 range) 
+                range(3000, 4000): 'Forest/Woodland',
+                # Grassland codes (2000-2999 range)
+                range(2000, 3000): 'Grassland/Prairie',
+                # Shrubland codes (4000-4999 range)
+                range(4000, 5000): 'Shrubland/Scrub',
+                # Agricultural codes (6000-6999 range)
+                range(6000, 7000): 'Agriculture/Cropland',
+                # Water/Wetland codes (8000-8999 range)
+                range(8000, 9000): 'Water/Wetland'
             },
             'fuel_model': {
-                91: 'Urban/Developed (Non-burnable)',
-                92: 'Snow/Ice (Non-burnable)',
-                93: 'Agriculture (Non-burnable)',
-                98: 'Water (Non-burnable)',
-                99: 'Barren (Non-burnable)',
-                101: 'Short Grass (1 hr)',
-                102: 'Timber (Grass and Understory)',
-                103: 'Tall Grass (1 hr)',
-                104: 'Chaparral (6 ft)'
+                # Non-burnable codes (90-99)
+                range(90, 100): 'Non-burnable',
+                # Grass fire behavior fuel models (100-109)
+                range(100, 110): 'Grass',
+                # Timber fire behavior fuel models (110-129)
+                range(110, 130): 'Timber',
+                # Shrub fire behavior fuel models (140-149)
+                range(140, 150): 'Shrub'
             }
         }
     
@@ -203,9 +209,9 @@ class LANDFIREMetadataExtractor:
                 if value_map:
                     self._attribute_cache[product_type] = value_map
                 else:
-                    # Use fallback values if S3 lookup fails
-                    logger.warning(f"Using fallback values for {product_type}")
-                    self._attribute_cache[product_type] = self._fallback_values.get(product_type, {})
+                    # Use empty cache if S3 lookup fails - will use range fallback
+                    logger.warning(f"S3 lookup failed for {product_type}, using range-based fallback")
+                    self._attribute_cache[product_type] = {}
             
             # Get unique values and their meanings
             unique_values = np.unique(pixel_values)
@@ -213,14 +219,20 @@ class LANDFIREMetadataExtractor:
             
             decoded_values = {}
             for value in unique_values:
-                decoded_values[int(value)] = value_map.get(int(value), f'Unknown ({value})')
+                int_value = int(value)
+                if int_value in value_map:
+                    decoded_values[int_value] = value_map[int_value]
+                else:
+                    # Try range-based fallback for generic categorization
+                    fallback_label = self._get_range_based_fallback(int_value, product_type)
+                    decoded_values[int_value] = fallback_label or f'Unknown ({value})'
             
             return {
                 'type': 'categorical',
                 'unique_count': len(unique_values),
                 'decoded_values': decoded_values,
                 'coverage_summary': self._calculate_coverage(pixel_values, decoded_values),
-                'data_source': 'S3' if product_type in self._attribute_cache else 'fallback'
+                'data_source': 'S3' if value_map else 'range_fallback'
             }
             
         except Exception as e:
@@ -298,6 +310,19 @@ class LANDFIREMetadataExtractor:
         
         return coverage
 
+    def _get_range_based_fallback(self, pixel_value: int, product_type: str) -> Optional[str]:
+        """Get fallback category based on LANDFIRE value ranges."""
+        
+        fallback_ranges = self._fallback_values.get(product_type, {})
+        
+        for value_range, label in fallback_ranges.items():
+            if isinstance(value_range, range) and pixel_value in value_range:
+                return label
+            elif isinstance(value_range, int) and pixel_value == value_range:
+                return label
+        
+        return None
+
     def interpret_pixel_at_coordinate(self, geotiff_bytes: bytes, latitude: float, longitude: float,
                                       product_type: str) -> Dict[str, Any]:
         """
@@ -329,9 +354,16 @@ class LANDFIREMetadataExtractor:
                         if value_map:
                             self._attribute_cache[product_type] = value_map
                         else:
-                            self._attribute_cache[product_type] = self._fallback_values.get(product_type, {})
+                            self._attribute_cache[product_type] = {}
+                    
                     value_map = self._attribute_cache.get(product_type, {})
-                    interpreted = value_map.get(int(pixel_value), f"Unknown ({pixel_value})")
+                    
+                    # Try exact lookup first, then range-based fallback
+                    if int(pixel_value) in value_map:
+                        interpreted = value_map[int(pixel_value)]
+                    else:
+                        fallback_label = self._get_range_based_fallback(int(pixel_value), product_type)
+                        interpreted = fallback_label or f"Unknown ({pixel_value})"
 
                 return {
                     "coordinate_pixel": {

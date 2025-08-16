@@ -1,8 +1,8 @@
 """
-Elevation Container Service
+Topography Container Service
 
-Containerized microservice for USGS elevation data processing.
-Handles DEM data with terrain analysis and slope/aspect calculations.
+Containerized microservice for USGS topographic data processing.
+Handles DEM data with comprehensive terrain analysis including elevation, slope, aspect, and fire risk terrain assessment.
 """
 
 import os
@@ -35,7 +35,7 @@ except ImportError as e:
     rasterio = None
     MemoryFile = None
 
-app = FastAPI(title="Elevation Container Service", version="1.0.0")
+app = FastAPI(title="Topography Container Service", version="1.0.0")
 
 # Initialize USGS service
 usgs_service = USGSElevationService() if USGSElevationService else None
@@ -54,8 +54,8 @@ def sanitize_binary_data(data: Any) -> Any:
     else:
         return data
 
-class ElevationRequest(BaseModel):
-    """Request model for elevation data"""
+class TopographyRequest(BaseModel):
+    """Request model for topography data"""
     latitude: float
     longitude: float
     buffer_meters: Optional[int] = 1000
@@ -66,7 +66,7 @@ async def health_check():
     """Health check endpoint for container orchestration"""
     return {
         "status": "healthy",
-        "service": "elevation-container",
+        "service": "topography-container",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
         "usgs_service_available": usgs_service is not None,
@@ -138,10 +138,10 @@ def analyze_elevation_data(elevation_bytes: bytes, latitude: float, longitude: f
         print(f"Error analyzing elevation data: {e}")
         return None
 
-@app.post("/elevation", response_model=dict)
-async def get_elevation_data(request: ElevationRequest):
+@app.post("/topography", response_model=dict)
+async def get_topography_data(request: TopographyRequest):
     """
-    Get elevation data for specified coordinates with terrain analysis
+    Get topography data for specified coordinates with comprehensive terrain analysis
     Returns data in shared schema format
     """
     if not usgs_service:
@@ -216,7 +216,7 @@ async def get_elevation_data(request: ElevationRequest):
         # Create standardized container output
         container_output = ContainerOutput(
             source=Sources.USGS_3DEP,
-            data_type=DataTypes.ELEVATION_DEM,
+            data_type=DataTypes.TOPOGRAPHY_DEM,
             location=location,
             timestamp=datetime.now().isoformat(),
             metadata=metadata,
@@ -234,7 +234,7 @@ async def get_elevation_data(request: ElevationRequest):
         # Return error response in shared schema format
         error_output = ContainerOutput(
             source=Sources.USGS_3DEP,
-            data_type=DataTypes.ELEVATION_DEM,
+            data_type=DataTypes.TOPOGRAPHY_DEM,
             location=LocationInfo(
                 latitude=request.latitude, 
                 longitude=request.longitude,
@@ -259,7 +259,7 @@ async def get_elevation_data(request: ElevationRequest):
 async def get_status():
     """Get container status and configuration"""
     return {
-        "container": "elevation-container",
+        "container": "topography-container",
         "version": "1.0.0",
         "schema_version": "1.0.0",
         "service_available": usgs_service is not None,
@@ -269,7 +269,7 @@ async def get_status():
             "elevation_statistics", "terrain_roughness", 
             "slope_analysis", "aspect_analysis", "fire_risk_terrain"
         ],
-        "endpoints": ["/health", "/elevation", "/status"]
+        "endpoints": ["/health", "/topography", "/status"]
     }
 
 if __name__ == "__main__":
