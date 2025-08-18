@@ -7,11 +7,10 @@ services:
       context: .
       dockerfile: ./containers/landfire/Dockerfile
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_DEFAULT_REGION=us-east-2
     volumes:
-      - ./shared_schema.py:/app/shared_schema.py:ro
+      - ./containers/shared_schema.py:/app/containers/shared_schema.py:ro
+      - ~/.aws:/root/.aws:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -30,7 +29,7 @@ services:
       timeout: 10s
       retries: 3
     volumes:
-      - ./shared_schema.py:/app/shared_schema.py:ro
+      - ./containers/shared_schema.py:/app/containers/shared_schema.py:ro
     networks:
       - pipeline-network
 
@@ -42,7 +41,7 @@ services:
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - OPENWEATHER_ENV=${OPENWEATHER_ENV}
     volumes:
-      - ./shared_schema.py:/app/shared_schema.py:ro
+      - ./containers/shared_schema.py:/app/containers/shared_schema.py:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
@@ -56,7 +55,7 @@ services:
       context: .
       dockerfile: ./containers/topography/Dockerfile
     volumes:
-      - ./shared_schema.py:/app/shared_schema.py:ro
+      - ./containers/shared_schema.py:/app/containers/shared_schema.py:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
@@ -87,8 +86,8 @@ services:
       - "5672:5672"
       - "15672:15672"  # Management UI
     environment:
-      - RABBITMQ_DEFAULT_USER=pipeline
-      - RABBITMQ_DEFAULT_PASS=pipeline123
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     networks:
@@ -108,7 +107,7 @@ services:
       - "8000:8000"
     environment:
       - REDIS_URL=redis://redis-cache:6379
-      - RABBITMQ_URL=amqp://pipeline:pipeline123@message-queue:5672
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@message-queue:5672
     depends_on:
       - redis-cache
       - message-queue
@@ -117,7 +116,7 @@ services:
       - weather-container
       - topography-container
     volumes:
-      - ./shared_schema.py:/app/shared_schema.py:ro
+      - ./containers/shared_schema.py:/app/containers/shared_schema.py:ro
     networks:
       - pipeline-network
 

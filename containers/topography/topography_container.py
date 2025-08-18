@@ -8,37 +8,174 @@ Handles DEM data with comprehensive terrain analysis including elevation, slope,
 import os
 import sys
 import base64
+import json
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import uvicorn
 import numpy as np
 
-# Add parent directory to path to import services
+# Add parent directory to path to import shared modules
 sys.path.append('/app')
-sys.path.append('/app/services')
 
-from shared_schema import (
+from containers.shared_schema import (
     ContainerOutput, LocationInfo, ProcessingMetadata, 
     InterpretedData, VisualizationData, Sources, DataTypes
 )
 
-# Import existing services
+# Import rasterio for data processing
 try:
-    from services.usgs_service import USGSElevationService
     import rasterio
     from rasterio.io import MemoryFile
+    import requests
+    import logging
 except ImportError as e:
-    print(f"Warning: Could not import USGS/rasterio services: {e}")
-    USGSElevationService = None
+    logging.warning(f"Could not import rasterio/requests: {e}")
     rasterio = None
     MemoryFile = None
+    requests = None
+
+
+class USGSElevationService:
+    """
+    USGS 3DEP elevation data service for topographic information
+    
+    Provides access to:
+    - Digital elevation models
+    - Derived terrain products (slope, aspect)
+    """
+    
+    def __init__(self):
+        """Initialize USGS 3DEP elevation data service."""
+        self.endpoint = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer'
+    
+    def get_data(self, lat: float, lon: float, buffer_meters: int = 1000) -> Dict[str, Any]:
+        """
+        Retrieve topographic data for specified coordinates
+        
+        Args:
+            lat: Latitude in decimal degrees
+            lon: Longitude in decimal degrees
+            buffer_meters: Buffer distance around point in meters
+            
+        Returns:
+            Dictionary containing elevation, slope, and aspect data
+        """
+        logger = logging.getLogger(__name__)
+        logger.info(f"Retrieving topographic data for ({lat:.4f}, {lon:.4f})")
+        
+        results = {
+            'source': 'USGS_3DEP',
+            'location': {'latitude': lat, 'longitude': lon},
+            'buffer_meters': buffer_meters,
+            'data': {},
+            'errors': []
+        }
+        
+        try:
+            # Transform coordinates to Web Mercator projection for accurate buffer calculation
+            try:
+                from pyproj import Transformer
+                transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+                center_x, center_y = transformer.transform(lon, lat)
+                bbox = f"{center_x-buffer_meters},{center_y-buffer_meters},{center_x+buffer_meters},{center_y+buffer_meters}"
+                bbox_sr = 3857
+            except ImportError:
+                # Fallback to approximate degree-based buffer calculation
+                buffer_deg = buffer_meters / 111000
+                bbox = f"{lon-buffer_deg},{lat-buffer_deg},{lon+buffer_deg},{lat+buffer_deg}"
+                bbox_sr = 4326
+            
+            # Execute elevation data request as primary topographic product
+            elevation_data = self._request_elevation(bbox, bbox_sr)
+            if elevation_data:
+                results['data']['elevation'] = elevation_data
+                logger.info(f"Retrieved elevation data: {elevation_data['size_bytes']} bytes")
+                
+                # Note: Slope and aspect derivatives require raster processing from elevation data
+                # Current implementation provides elevation as primary topographic product
+                # Enhancement opportunity: implement slope/aspect calculation from elevation raster
+                
+            else:
+                results['errors'].append("Failed to retrieve elevation data")
+                
+        except Exception as e:
+            error_msg = f"Error retrieving topographic data: {str(e)}"
+            results['errors'].append(error_msg)
+            logger.error(error_msg)
+        
+        return results
+    
+    def _request_elevation(self, bbox: str, bbox_sr: int) -> Optional[Dict[str, Any]]:
+        """Execute USGS ImageServer exportImage request for elevation data"""
+        
+        params = {
+            'f': 'image',
+            'bbox': bbox,
+            'bboxSR': bbox_sr,
+            'imageSR': 4326,
+            'size': '256,256',
+            'format': 'tiff',
+            'pixelType': 'F32',
+            'interpolation': 'RSP_BilinearInterpolation'
+        }
+        
+        try:
+            response = requests.get(f"{self.endpoint}/exportImage", params=params, timeout=60)
+            
+            if response.status_code == 200:
+                return {
+                    'data': response.content,
+                    'bbox': bbox,
+                    'size_bytes': len(response.content),
+                    'format': 'GeoTIFF',
+                    'crs': 'EPSG:4326'
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Elevation request failed: {e}")
+            return None
+
+# Structured logging configuration
+class StructuredFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "service": "topography-container",
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno
+        }
+        if hasattr(record, 'request_id'):
+            log_entry["request_id"] = record.request_id
+        if hasattr(record, 'event_id'):
+            log_entry["event_id"] = record.event_id
+        return json.dumps(log_entry)
+
+# Configure structured logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(StructuredFormatter())
+logger.handlers = [handler]
+logger.propagate = False
 
 app = FastAPI(title="Topography Container Service", version="1.0.0")
 
 # Initialize USGS service
-usgs_service = USGSElevationService() if USGSElevationService else None
+try:
+    usgs_service = USGSElevationService()
+    logger.info("USGS service initialized successfully")
+except Exception as e:
+    logger.error(f"Could not initialize USGS service: {e}")
+    usgs_service = None
 
 def sanitize_binary_data(data: Any) -> Any:
     """
@@ -54,6 +191,18 @@ def sanitize_binary_data(data: Any) -> Any:
     else:
         return data
 
+def generate_request_id() -> str:
+    """Generate unique request ID for tracing across systems"""
+    import uuid
+    return f"req_{uuid.uuid4().hex[:12]}"
+
+def get_request_id_from_headers(request: Request) -> str:
+    """Get or generate request ID for tracking"""
+    request_id = request.headers.get("x-request-id") or request.headers.get("x-trace-id")
+    if not request_id:
+        request_id = generate_request_id()
+    return request_id
+
 class TopographyRequest(BaseModel):
     """Request model for topography data"""
     latitude: float
@@ -62,15 +211,23 @@ class TopographyRequest(BaseModel):
     event_id: Optional[str] = None
 
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """Health check endpoint for container orchestration"""
+    request_id = get_request_id_from_headers(request)
+    
+    logger.info(
+        "Health check requested",
+        extra={"request_id": request_id}
+    )
+    
     return {
         "status": "healthy",
         "service": "topography-container",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
         "usgs_service_available": usgs_service is not None,
-        "rasterio_available": rasterio is not None
+        "rasterio_available": rasterio is not None,
+        "request_id": request_id
     }
 
 def analyze_elevation_data(elevation_bytes: bytes, latitude: float, longitude: float):
@@ -135,11 +292,11 @@ def analyze_elevation_data(elevation_bytes: bytes, latitude: float, longitude: f
                 }
                 
     except Exception as e:
-        print(f"Error analyzing elevation data: {e}")
+        logger.error(f"Error analyzing elevation data: {e}")
         return None
 
 @app.post("/topography", response_model=dict)
-async def get_topography_data(request: TopographyRequest):
+async def get_topography_data(data_request: TopographyRequest, request: Request):
     """
     Get topography data for specified coordinates with comprehensive terrain analysis
     Returns data in shared schema format
@@ -147,23 +304,35 @@ async def get_topography_data(request: TopographyRequest):
     if not usgs_service:
         raise HTTPException(status_code=503, detail="USGS service not available")
     
+    request_id = get_request_id_from_headers(request)
     start_time = datetime.now()
+    
+    logger.info(
+        f"Topography data request started",
+        extra={
+            "request_id": request_id,
+            "event_id": data_request.event_id,
+            "latitude": data_request.latitude,
+            "longitude": data_request.longitude,
+            "buffer_meters": data_request.buffer_meters
+        }
+    )
     
     try:
         # Get elevation data using existing service
         elevation_data = usgs_service.get_data(
-            request.latitude, 
-            request.longitude, 
-            request.buffer_meters
+            data_request.latitude, 
+            data_request.longitude, 
+            data_request.buffer_meters
         )
         
         processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
         
         # Transform to shared schema format
         location = LocationInfo(
-            latitude=request.latitude,
-            longitude=request.longitude,
-            buffer_meters=request.buffer_meters
+            latitude=data_request.latitude,
+            longitude=data_request.longitude,
+            buffer_meters=data_request.buffer_meters
         )
         
         metadata = ProcessingMetadata(
@@ -182,7 +351,7 @@ async def get_topography_data(request: TopographyRequest):
             elevation_bytes = elevation_data["data"]["elevation"]["data"]
             
             # Analyze elevation data (this is where Mark's work integrates)
-            analysis = analyze_elevation_data(elevation_bytes, request.latitude, request.longitude)
+            analysis = analyze_elevation_data(elevation_bytes, data_request.latitude, data_request.longitude)
             
             if analysis:
                 # Create visualization data (simplified 2D array)
@@ -198,10 +367,10 @@ async def get_topography_data(request: TopographyRequest):
                         }
                     },
                     bounds={
-                        "north": request.latitude + 0.005,
-                        "south": request.latitude - 0.005,
-                        "east": request.longitude + 0.005,
-                        "west": request.longitude - 0.005
+                        "north": data_request.latitude + 0.005,
+                        "south": data_request.latitude - 0.005,
+                        "east": data_request.longitude + 0.005,
+                        "west": data_request.longitude - 0.005
                     },
                     resolution_meters=30.0
                 )
@@ -220,25 +389,50 @@ async def get_topography_data(request: TopographyRequest):
             location=location,
             timestamp=datetime.now().isoformat(),
             metadata=metadata,
-            event_id=request.event_id,
+            event_id=data_request.event_id,
             raw_data=sanitize_binary_data(elevation_data),
             interpreted_data=interpreted_data,
             errors=elevation_data.get("errors", [])
         )
         
-        return container_output.to_dict()
+        # Log successful completion with performance metrics
+        logger.info(
+            f"Topography data collection completed successfully",
+            extra={
+                "request_id": request_id,
+                "event_id": data_request.event_id,
+                "duration_ms": processing_time,
+                "has_interpreted_data": interpreted_data is not None,
+                "error_count": len(container_output.errors or [])
+            }
+        )
+        
+        response_dict = container_output.to_dict()
+        response_dict["request_id"] = request_id
+        return response_dict
         
     except Exception as e:
         processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
+        
+        # Log error with context
+        logger.error(
+            f"Topography data collection failed: {str(e)}",
+            extra={
+                "request_id": request_id,
+                "event_id": data_request.event_id,
+                "duration_ms": processing_time,
+                "error": str(e)
+            }
+        )
         
         # Return error response in shared schema format
         error_output = ContainerOutput(
             source=Sources.USGS_3DEP,
             data_type=DataTypes.TOPOGRAPHY_DEM,
             location=LocationInfo(
-                latitude=request.latitude, 
-                longitude=request.longitude,
-                buffer_meters=request.buffer_meters
+                latitude=data_request.latitude, 
+                longitude=data_request.longitude,
+                buffer_meters=data_request.buffer_meters
             ),
             timestamp=datetime.now().isoformat(),
             metadata=ProcessingMetadata(
@@ -249,15 +443,24 @@ async def get_topography_data(request: TopographyRequest):
                 container_id=f"elevation-container-{os.getpid()}",
                 container_version="1.0.0"
             ),
-            event_id=request.event_id,
+            event_id=data_request.event_id,
             errors=[str(e)]
         )
         
-        return error_output.to_dict()
+        error_response = error_output.to_dict()
+        error_response["request_id"] = request_id
+        return error_response
 
 @app.get("/status")
-async def get_status():
+async def get_status(request: Request):
     """Get container status and configuration"""
+    request_id = get_request_id_from_headers(request)
+    
+    logger.info(
+        "Status check requested",
+        extra={"request_id": request_id}
+    )
+    
     return {
         "container": "topography-container",
         "version": "1.0.0",
@@ -269,7 +472,8 @@ async def get_status():
             "elevation_statistics", "terrain_roughness", 
             "slope_analysis", "aspect_analysis", "fire_risk_terrain"
         ],
-        "endpoints": ["/health", "/topography", "/status"]
+        "endpoints": ["/health", "/topography", "/status"],
+        "request_id": request_id
     }
 
 if __name__ == "__main__":

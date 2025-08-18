@@ -78,3 +78,6 @@ htmlcov/
 *secret*
 credentials.*
 auth.*
+
+# Development documentation (local only)
+CLAUDE.md
