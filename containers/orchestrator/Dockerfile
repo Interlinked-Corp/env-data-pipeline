@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY ./containers/orchestrator/orchestrator.py .
-COPY ./shared_schema.py .
+COPY ./containers/shared_schema.py ./containers/
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

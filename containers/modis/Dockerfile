@@ -13,11 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY ./containers/modis/modis_container.py .
-COPY ./shared_schema.py .
-
-# Create directories and copy services from main pipeline
-RUN mkdir -p ./services
-COPY ./services/modis_service.py ./services/
+COPY ./containers/shared_schema.py ./containers/
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
