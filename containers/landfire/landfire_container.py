@@ -366,8 +366,8 @@ async def get_landfire_data(request: LANDFIRERequest):
                     try:
                         interpretation = metadata_extractor.interpret_pixel_at_coordinate(
                             geotiff_bytes=product_data["data"],
-                            latitude=request.latitude,
-                            longitude=request.longitude,
+                            lat=request.latitude,
+                            lon=request.longitude,
                             product_type=product_name
                         )
                         interpreted_pixels[product_name] = interpretation
